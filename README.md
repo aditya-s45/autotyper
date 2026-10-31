@@ -57,8 +57,8 @@ The companion engine is written in **Go** for native performance, zero-dependenc
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/aditya-s45/autocoder.git
-cd autocoder
+git clone https://github.com/aditya-s45/autotyper.git
+cd autotyper
 
 # 2. Run directly
 go run main.go
@@ -106,7 +106,7 @@ go build -ldflags="-s -w" -o dist/KeyboardPunch.exe main.go
 ## 📁 Project Structure
 
 ```
-autocoder/
+autotyper/
 ├── main.go            ← Companion engine (Web server + WS + Win32 SendInput + IDE Indentation)
 ├── network.go         ← Local IP detection (filters virtual NICs) & dynamic QR generator
 ├── tray.go            ← Pure Win32 system tray menu (Shell_NotifyIconW, TrackPopupMenu)

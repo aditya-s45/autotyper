@@ -1,4 +1,4 @@
-module github.com/aditya-s45/autocoder
+module github.com/aditya-s45/autotyper
 
 go 1.27.0
 
