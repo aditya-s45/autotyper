@@ -323,6 +323,25 @@ func cleanupADBReverse() {
 	_ = exec.Command("adb", "reverse", "--remove-all").Run()
 }
 
+// monitorADBLoop periodically checks for hot-plugged Android devices and automatically configures ADB reverse
+func monitorADBLoop(initialReversed bool) {
+	adbReversed := initialReversed
+	for {
+		time.Sleep(3 * time.Second)
+		ok, info := checkADB()
+		if ok && !adbReversed {
+			logMsg("📱", fmt.Sprintf("Android device detected via USB: %s", info), ColorGreen)
+			if setupADBReverse() {
+				adbReversed = true
+				logMsg("✨", fmt.Sprintf("ADB reverse active! You can now open http://localhost:%d on your phone", HTTP_PORT), ColorGreen)
+			}
+		} else if !ok && adbReversed {
+			adbReversed = false
+			logMsg("⚠️ ", "Android device disconnected from ADB.", ColorYellow)
+		}
+	}
+}
+
 // ─── Shared State & Concurrency ──────────────────────────────
 
 type SharedState struct {
@@ -844,16 +863,22 @@ func main() {
 	// 1. Check ADB
 	logMsg("🔍", "Checking ADB connection...", ColorCyan)
 	ok, adbInfo := checkADB()
+	adbReversed := false
 	if !ok {
 		logMsg("⚠️ ", adbInfo, ColorYellow)
 		logMsg("💡", "No USB phone detected yet. Connect phone with USB Debugging for ADB reverse.", ColorDim)
 		logMsg("🌐", "Starting web & WebSocket servers for browser & local network access...", ColorCyan)
 	} else {
 		logMsg("✅", fmt.Sprintf("Device connected: %s", adbInfo), ColorGreen)
-		if !setupADBReverse() {
+		if setupADBReverse() {
+			adbReversed = true
+		} else {
 			logMsg("⚠️ ", "ADB reverse setup failed. Try: adb reverse --remove-all", ColorYellow)
 		}
 	}
+
+	// Start background ADB hotplug watcher loop
+	go monitorADBLoop(adbReversed)
 
 	// 2. Start HTTP Server serving embedded app/
 	appFS, err := fs.Sub(embeddedApp, "app")
