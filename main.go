@@ -890,6 +890,7 @@ func main() {
 	http.HandleFunc("/ws", handleWS)
 	http.HandleFunc("/ws/", handleWS)
 	http.HandleFunc("/api/info", handleAPIInfo)
+	http.HandleFunc("/api/ping", handleAPIPing)
 	http.HandleFunc("/api/qr", handleAPIQR)
 	http.HandleFunc("/pair", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/pair.html", http.StatusTemporaryRedirect)
@@ -925,6 +926,9 @@ func main() {
 		fmt.Printf("  🛑  %sPress %sCtrl+C%s to stop%s\n\n", ColorDim, ColorBold, ColorDim, ColorEnd)
 	}
 
+	// 4. Start Zero-Touch mDNS Broadcaster for Android auto-discovery
+	shutdownMDNS := startMDNSBroadcaster()
+
 	// Start Windows System Tray in background goroutine
 	go startSystemTray()
 
@@ -937,6 +941,12 @@ func main() {
 		fmt.Println()
 		logMsg("👋", "Shutting down...", ColorDim)
 	}
+	if shutdownMDNS != nil {
+
+		shutdownMDNS()
+
+	}
+
 	cleanupADBReverse()
 	if isConsoleAttached {
 		logMsg("✅", "Goodbye!", ColorGreen)
