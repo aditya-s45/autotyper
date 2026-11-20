@@ -16,14 +16,42 @@
         android:usesCleartextTraffic="true"
         android:windowSoftInputMode="adjustResize"
         android:theme="@style/Theme.AutoTyper">
+
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Quick Share & Text Selection Overlay Activity -->
+        <activity
+            android:name=".share.SharePunchActivity"
+            android:label="@string/title_share_to_laptop"
+            android:theme="@style/Theme.AutoTyper.Translucent"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:windowSoftInputMode="stateHidden">
+
+            <!-- System Share Sheet ("Share" -> "Punch to Laptop") -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- Text Selection Floating Toolbar ("Punch to Laptop" directly on highlighted text) -->
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>
