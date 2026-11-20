@@ -88,12 +88,31 @@ flowchart TD
   - 1-tap "Load in Editor" to inspect and modify.
   - Custom snippet creator dialog with custom tags and language switcher.
 - [x] Recompiled release-ready APK (`AutoTyper.apk` - 12.4 MB).
-- [x] All 5 Stages fully completed, verified, and pushed to `main` branch.
 
 ---
 
-## 🏆 Project Delivery Complete!
-All 5 stages of the AutoTyper Android Native App are fully implemented, compiled into `AutoTyper.apk`, verified with Android SDK 36 toolchain, and committed to GitHub!
+### 🔥 Stage 6: Floating Stealth Bubble Overlay (`FloatingBubbleService`) *(Completed)*
+> **Goal:** 1-tap stealth clipboard punch floating directly over ANY application (ChatGPT, Chrome, SEB, PDF reader, LeetCode) without switching screens.
+
+- [x] Foreground Service (`FloatingBubbleService`) with `SYSTEM_ALERT_WINDOW` overlay.
+- [x] Collapsed Cyber Bubble:
+  - 56dp circular dark widget with glowing electric cyan border and `⚡` icon.
+  - Drag anywhere across the screen with magnetic edge-snapping (sticks cleanly to left or right margin).
+  - Single-tap = Instant Punch from clipboard with progressive stealth haptic ticks.
+  - Long-press = Expands the mini-floating dashboard.
+- [x] Expanded Mini Floating Dashboard:
+  - Header with live ZeroConf companion status.
+  - High-impact `[ ⚡ PUNCH CLIPBOARD ]` action button.
+  - Quick WPM speed selector (60, 120, 180, 240, 320, 500 WPM).
+  - Emergency stop button (`🛑 STOP TYPING ON LAPTOP`).
+  - Minimize (`—`) and Close (`✕`) overlay controls.
+- [x] Integrated in `MainScreen` with seamless `Settings.ACTION_MANAGE_OVERLAY_PERMISSION` handling.
+- [x] Recompiled release-ready APK (`AutoTyper.apk` - 12.4 MB).
+
+---
+
+## 🏆 Project Milestone: 6 Complete Stages!
+All 6 stages of the AutoTyper Native Android App are fully implemented, compiled into `AutoTyper.apk`, verified with Android SDK 36 toolchain, and committed to GitHub!
 
 ---
 

@@ -1,10 +1,14 @@
 package com.aditya.autotyper.ui.main
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -40,6 +44,7 @@ import com.aditya.autotyper.discovery.DiscoveredDevice
 import com.aditya.autotyper.discovery.DiscoveryStatus
 import com.aditya.autotyper.network.CompanionSyncState
 import com.aditya.autotyper.network.ConnectionState
+import com.aditya.autotyper.overlay.FloatingBubbleService
 import com.aditya.autotyper.vault.VaultSnippet
 import kotlin.math.roundToInt
 
@@ -97,6 +102,30 @@ fun MainScreen(
     var showManualIpDialog by remember { mutableStateOf(false) }
     var manualIp by remember { mutableStateOf("127.0.0.1") }
     var manualPort by remember { mutableStateOf("8080") }
+
+    // Stage 6: Floating Stealth Bubble Active State
+    var isBubbleActive by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                FloatingBubbleService.isRunning && Settings.canDrawOverlays(context)
+            } else {
+                FloatingBubbleService.isRunning
+            }
+        )
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isBubbleActive = FloatingBubbleService.isRunning
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Haptic feedback helper
     fun triggerHaptic(durationMs: Long = 40) {
@@ -532,6 +561,33 @@ fun MainScreen(
                         onHumanJitterChange = { viewModel.setHumanJitter(it) },
                         fastPaste = fastPaste,
                         onFastPasteChange = { viewModel.setFastPaste(it) }
+                    )
+                }
+
+                // 8. Stage 6: Floating Stealth Bubble
+                item {
+                    FloatingStealthBubbleCard(
+                        isBubbleActive = isBubbleActive,
+                        onToggleBubble = { enable ->
+                            if (enable) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+                                    Toast.makeText(context, "Please allow 'Display over other apps'", Toast.LENGTH_LONG).show()
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(intent)
+                                } else {
+                                    FloatingBubbleService.start(context)
+                                    isBubbleActive = true
+                                    triggerHaptic(40)
+                                }
+                            } else {
+                                FloatingBubbleService.stop(context)
+                                isBubbleActive = false
+                                triggerHaptic(40)
+                            }
+                        }
                     )
                 }
 
@@ -1740,5 +1796,83 @@ fun SmallActionButton(
             fontWeight = FontWeight.SemiBold,
             color = if (isDanger) CrimsonRed else Color.LightGray
         )
+    }
+}
+
+@Composable
+fun FloatingStealthBubbleCard(
+    isBubbleActive: Boolean,
+    onToggleBubble: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("⚡", fontSize = 18.sp)
+                    Column {
+                        Text(
+                            "FLOATING STEALTH BUBBLE",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = ElectricCyan
+                        )
+                        Text(
+                            if (isBubbleActive) "Active over all apps" else "Disabled",
+                            fontSize = 11.sp,
+                            color = if (isBubbleActive) EmeraldGreen else Color.Gray,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Switch(
+                    checked = isBubbleActive,
+                    onCheckedChange = onToggleBubble,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = ElectricCyan
+                    )
+                )
+            }
+
+            Text(
+                "Floats a 1-tap stealth cyber bubble over ChatGPT, Chrome, SEB, PDF, or Telegram. Tap the bubble anytime to punch clipboard instantly without switching apps!",
+                fontSize = 12.sp,
+                color = Color.LightGray
+            )
+
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color.White.copy(alpha = 0.04f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("💡", fontSize = 12.sp)
+                    Text(
+                        "Tap: Instant Punch • Long Press: Speed & Dashboard • Drag to screen edge",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
     }
 }
