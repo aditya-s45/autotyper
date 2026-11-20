@@ -2,4 +2,5 @@
     <string name="app_name">AutoTyper</string>
     <string name="title_share_to_laptop">Punch to Laptop</string>
     <string name="title_process_text">Punch to Laptop</string>
+    <string name="title_tile_punch">Punch Clipboard</string>
 </resources>

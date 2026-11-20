@@ -10,6 +10,8 @@ import com.aditya.autotyper.discovery.DiscoveryStatus
 import com.aditya.autotyper.network.AutoTyperClient
 import com.aditya.autotyper.network.CompanionSyncState
 import com.aditya.autotyper.network.ConnectionState
+import com.aditya.autotyper.vault.SnippetsVaultManager
+import com.aditya.autotyper.vault.VaultSnippet
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,7 @@ data class CodeSnippet(
 class AutoTyperViewModel(application: Application) : AndroidViewModel(application) {
     val discovery = AutoTyperDiscovery(application)
     val client = AutoTyperClient()
+    val vaultManager = SnippetsVaultManager(application)
 
     private val prefs = application.getSharedPreferences("autotyper_state", Context.MODE_PRIVATE)
 
@@ -35,6 +38,9 @@ class AutoTyperViewModel(application: Application) : AndroidViewModel(applicatio
     val syncState: StateFlow<CompanionSyncState> = client.syncState
     val discoveryStatus: StateFlow<DiscoveryStatus> = discovery.discoveryStatus
     val discoveredDevices: StateFlow<List<DiscoveredDevice>> = discovery.discoveredDevices
+
+    // Offline Snippets Vault
+    val vaultSnippets: StateFlow<List<VaultSnippet>> = vaultManager.snippets
 
     // Editor & Typing Settings State
     private val _code = MutableStateFlow(prefs.getString("saved_code", "") ?: "")
@@ -287,6 +293,24 @@ class AutoTyperViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearHistory() {
         _history.value = emptyList()
         prefs.edit().remove("code_history").apply()
+    }
+
+    // Vault actions
+    fun addVaultSnippet(title: String, language: String, tags: List<String>, code: String) {
+        vaultManager.addSnippet(title, language, tags, code)
+    }
+
+    fun deleteVaultSnippet(id: String) {
+        vaultManager.deleteSnippet(id)
+    }
+
+    fun toggleVaultFavorite(id: String) {
+        vaultManager.toggleFavorite(id)
+    }
+
+    fun punchCustomSnippet(snippetCode: String) {
+        setCode(snippetCode)
+        startPunchSequence()
     }
 
     override fun onCleared() {

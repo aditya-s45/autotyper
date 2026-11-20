@@ -40,6 +40,7 @@ import com.aditya.autotyper.discovery.DiscoveredDevice
 import com.aditya.autotyper.discovery.DiscoveryStatus
 import com.aditya.autotyper.network.CompanionSyncState
 import com.aditya.autotyper.network.ConnectionState
+import com.aditya.autotyper.vault.VaultSnippet
 import kotlin.math.roundToInt
 
 // Custom Glassmorphic Dark Theme Palette
@@ -78,6 +79,15 @@ fun MainScreen(
     val humanJitter by viewModel.humanJitter.collectAsStateWithLifecycle()
     val fastPaste by viewModel.fastPaste.collectAsStateWithLifecycle()
 
+    // Snippets Vault State
+    val vaultSnippets by viewModel.vaultSnippets.collectAsStateWithLifecycle()
+
+    // Navigation & Tab State: 0 = Puncher/Editor, 1 = Snippets Vault
+    var currentTab by remember { mutableIntStateOf(0) }
+    var vaultSearchQuery by remember { mutableStateOf("") }
+    var selectedTagFilter by remember { mutableStateOf("All") }
+    var showAddSnippetDialog by remember { mutableStateOf(false) }
+
     // Countdown & Modals
     val isCountingDown by viewModel.isCountingDown.collectAsStateWithLifecycle()
     val countdownRemaining by viewModel.countdownRemaining.collectAsStateWithLifecycle()
@@ -109,57 +119,131 @@ fun MainScreen(
     val lineCount = if (code.isEmpty()) 0 else code.count { it == '\n' } + 1
     val estimatedSeconds = if (charCount == 0 || wpm == 0) 0.0 else (charCount.toDouble() / (wpm * 5.0)) * 60.0
 
+    // Filtered Vault Snippets
+    val filteredVaultSnippets = remember(vaultSnippets, vaultSearchQuery, selectedTagFilter) {
+        vaultSnippets.filter { snippet ->
+            val matchesQuery = vaultSearchQuery.isBlank() ||
+                    snippet.title.contains(vaultSearchQuery, ignoreCase = true) ||
+                    snippet.language.contains(vaultSearchQuery, ignoreCase = true) ||
+                    snippet.tags.any { it.contains(vaultSearchQuery, ignoreCase = true) } ||
+                    snippet.code.contains(vaultSearchQuery, ignoreCase = true)
+
+            val matchesTag = when (selectedTagFilter) {
+                "All" -> true
+                "⭐ Favorites" -> snippet.isFavorite
+                else -> snippet.tags.any { it.equals(selectedTagFilter, ignoreCase = true) }
+            }
+
+            matchesQuery && matchesTag
+        }
+    }
+
+    val allVaultTags = remember(vaultSnippets) {
+        listOf("All", "⭐ Favorites") + vaultSnippets.flatMap { it.tags }.distinct().sorted()
+    }
+
     Scaffold(
         modifier = modifier.background(DarkBg),
         containerColor = DarkBg,
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "⚡ AutoTyper",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 20.sp,
-                            color = Color.White
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = when (connectionState) {
-                                is ConnectionState.Connected -> EmeraldGreen.copy(alpha = 0.2f)
-                                is ConnectionState.Connecting -> AmberOrange.copy(alpha = 0.2f)
-                                else -> Color.White.copy(alpha = 0.1f)
-                            }
+            Column(modifier = Modifier.background(DarkBg)) {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = when (connectionState) {
-                                    is ConnectionState.Connected -> "ONLINE"
-                                    is ConnectionState.Connecting -> "CONNECTING"
-                                    else -> "OFFLINE"
-                                },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = when (connectionState) {
-                                    is ConnectionState.Connected -> EmeraldGreen
-                                    is ConnectionState.Connecting -> AmberOrange
-                                    else -> Color.Gray
-                                }
+                                "⚡ AutoTyper",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 20.sp,
+                                color = Color.White
                             )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = when (connectionState) {
+                                    is ConnectionState.Connected -> EmeraldGreen.copy(alpha = 0.2f)
+                                    is ConnectionState.Connecting -> AmberOrange.copy(alpha = 0.2f)
+                                    else -> Color.White.copy(alpha = 0.1f)
+                                }
+                            ) {
+                                Text(
+                                    text = when (connectionState) {
+                                        is ConnectionState.Connected -> "ONLINE"
+                                        is ConnectionState.Connecting -> "CONNECTING"
+                                        else -> "OFFLINE"
+                                    },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (connectionState) {
+                                        is ConnectionState.Connected -> EmeraldGreen
+                                        is ConnectionState.Connecting -> AmberOrange
+                                        else -> Color.Gray
+                                    }
+                                )
+                            }
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.startScan() }) {
-                        Text("🔄", fontSize = 16.sp)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkBg
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.startScan() }) {
+                            Text("🔄", fontSize = 16.sp)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = DarkBg
+                    )
                 )
-            )
+
+                // Top Segmented Mode Switcher: ⚡ Puncher vs 🗄️ Vault
+                PrimaryTabRow(
+                    selectedTabIndex = currentTab,
+                    containerColor = DarkBg,
+                    contentColor = ElectricCyan,
+                    divider = { HorizontalDivider(color = CardBorder) }
+                ) {
+                    Tab(
+                        selected = currentTab == 0,
+                        onClick = {
+                            triggerHaptic(20)
+                            currentTab = 0
+                        },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("⚡", fontSize = 14.sp)
+                                Text(
+                                    "PUNCHER",
+                                    fontWeight = if (currentTab == 0) FontWeight.ExtraBold else FontWeight.Medium,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = currentTab == 1,
+                        onClick = {
+                            triggerHaptic(20)
+                            currentTab = 1
+                        },
+                        text = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("🗄️", fontSize = 14.sp)
+                                Text(
+                                    "VAULT (${vaultSnippets.size})",
+                                    fontWeight = if (currentTab == 1) FontWeight.ExtraBold else FontWeight.Medium,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    )
+                }
+            }
         },
         bottomBar = {
             // High-Impact Sticky Punch Bar
@@ -195,7 +279,7 @@ fun MainScreen(
                             )
                         }
                     }
-                } else {
+                } else if (currentTab == 0) {
                     Button(
                         onClick = {
                             triggerHaptic(50)
@@ -227,192 +311,390 @@ fun MainScreen(
                             )
                         }
                     }
+                } else {
+                    // Quick Action on Vault Tab: Add Custom Snippet
+                    Button(
+                        onClick = {
+                            triggerHaptic(30)
+                            showAddSnippetDialog = true
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    listOf(Color(0xFF0284C7), ElectricCyan)
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            ),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("➕", fontSize = 18.sp)
+                            Text(
+                                "ADD SNIPPET TO VAULT",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Connection Banner Card
-            item {
-                ConnectionStatusBanner(
-                    connectionState = connectionState,
-                    discoveryStatus = discoveryStatus,
-                    onRescan = { viewModel.startScan() },
-                    onDisconnect = { viewModel.disconnect() },
-                    onOpenManualIp = { showManualIpDialog = true }
-                )
-            }
+        if (currentTab == 0) {
+            // ══════════════════════════════════════════════════════════
+            // TAB 0: PUNCHER / CODE EDITOR VIEW
+            // ══════════════════════════════════════════════════════════
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(4.dp)) }
 
-            // 2. Discovered Devices (mDNS / ZeroConf) if not connected
-            if (connectionState !is ConnectionState.Connected && discoveredDevices.isNotEmpty()) {
+                // 1. Connection Banner Card
                 item {
-                    Text(
-                        text = "DISCOVERED COMPANIONS (${discoveredDevices.size})",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Gray
+                    ConnectionStatusBanner(
+                        connectionState = connectionState,
+                        discoveryStatus = discoveryStatus,
+                        onRescan = { viewModel.startScan() },
+                        onDisconnect = { viewModel.disconnect() },
+                        onOpenManualIp = { showManualIpDialog = true }
                     )
                 }
-                items(discoveredDevices) { device ->
-                    DiscoveredDeviceItem(
-                        device = device,
-                        isConnected = false,
-                        onConnect = { viewModel.connectToDevice(device) }
-                    )
-                }
-            }
 
-            // 3. Companion Live Telemetry & Progress (when typing)
-            if (syncState.isTyping) {
+                // 2. Discovered Devices (mDNS / ZeroConf) if not connected
+                if (connectionState !is ConnectionState.Connected && discoveredDevices.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "DISCOVERED COMPANIONS (${discoveredDevices.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                    }
+                    items(discoveredDevices) { device ->
+                        DiscoveredDeviceItem(
+                            device = device,
+                            isConnected = false,
+                            onConnect = { viewModel.connectToDevice(device) }
+                        )
+                    }
+                }
+
+                // 3. Companion Live Telemetry & Progress (when typing)
+                if (syncState.isTyping) {
+                    item {
+                        LiveTypingTelemetryCard(
+                            syncState = syncState,
+                            onStop = { viewModel.stop() }
+                        )
+                    }
+                }
+
+                // 4. Code Editor Section
                 item {
-                    LiveTypingTelemetryCard(
-                        syncState = syncState,
-                        onStop = { viewModel.stop() }
-                    )
-                }
-            }
-
-            // 4. Code Editor Section
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = CardBg),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(
-                                "CODE TO PUNCH",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = ElectricCyan
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                // Paste from clipboard
-                                SmallActionButton(label = "📋 Paste") {
-                                    triggerHaptic(30)
-                                    val text = clipboardManager.getText()?.text ?: ""
-                                    if (text.isNotEmpty()) viewModel.setCode(text)
-                                }
-                                // Quick Snippets
-                                SmallActionButton(label = "💡 Snippets") {
-                                    showSnippetsDialog = true
-                                }
-                                // Clear
-                                if (code.isNotEmpty()) {
-                                    SmallActionButton(label = "🧹 Clear", isDanger = true) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "CODE TO PUNCH",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = ElectricCyan
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    // Paste from clipboard
+                                    SmallActionButton(label = "📋 Paste") {
                                         triggerHaptic(30)
-                                        viewModel.clearCode()
+                                        val text = clipboardManager.getText()?.text ?: ""
+                                        if (text.isNotEmpty()) viewModel.setCode(text)
+                                    }
+                                    // Vault Tab quick switch
+                                    SmallActionButton(label = "🗄️ Vault") {
+                                        triggerHaptic(30)
+                                        currentTab = 1
+                                    }
+                                    // Clear
+                                    if (code.isNotEmpty()) {
+                                        SmallActionButton(label = "🧹 Clear", isDanger = true) {
+                                            triggerHaptic(30)
+                                            viewModel.clearCode()
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        // Monospaced Code Textarea
-                        OutlinedTextField(
-                            value = code,
-                            onValueChange = { viewModel.setCode(it) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 160.dp, max = 320.dp),
-                            placeholder = {
-                                Text(
-                                    "Paste or write code here to punch into laptop...\n\ne.g. Python, Java, C++, SEB answers, Google Docs notes",
+                            // Monospaced Code Textarea
+                            OutlinedTextField(
+                                value = code,
+                                onValueChange = { viewModel.setCode(it) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 160.dp, max = 320.dp),
+                                placeholder = {
+                                    Text(
+                                        "Paste or write code here to punch into laptop...\n\ne.g. Python, Java, C++, SEB answers, Google Docs notes",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 13.sp,
+                                        color = Color.Gray
+                                    )
+                                },
+                                textStyle = androidx.compose.ui.text.TextStyle(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 13.sp,
+                                    color = Color.White
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = DarkBg,
+                                    unfocusedContainerColor = DarkBg,
+                                    focusedBorderColor = ElectricCyan,
+                                    unfocusedBorderColor = CardBorder
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            // Stats & Estimated Duration
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "$charCount chars • $wordCount words • $lineCount lines",
+                                    fontSize = 12.sp,
                                     color = Color.Gray
                                 )
-                            },
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp,
-                                color = Color.White
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = DarkBg,
-                                unfocusedContainerColor = DarkBg,
-                                focusedBorderColor = ElectricCyan,
-                                unfocusedBorderColor = CardBorder
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                                if (charCount > 0) {
+                                    Text(
+                                        "~${String.format("%.1f", estimatedSeconds)}s at $wpm WPM",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = EmeraldGreen
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
-                        // Stats & Estimated Duration
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "$charCount chars • $wordCount words • $lineCount lines",
-                                fontSize = 12.sp,
-                                color = Color.Gray
-                            )
-                            if (charCount > 0) {
+                // 5. Speed (WPM) Controls
+                item {
+                    SpeedControlCard(
+                        wpm = wpm,
+                        onWpmChange = {
+                            triggerHaptic(20)
+                            viewModel.setWpm(it)
+                        }
+                    )
+                }
+
+                // 6. Focus Delay Controls
+                item {
+                    FocusDelayCard(
+                        delaySec = focusDelay,
+                        onDelayChange = {
+                            triggerHaptic(20)
+                            viewModel.setFocusDelay(it)
+                        }
+                    )
+                }
+
+                // 7. Powerful Superpower Toggles
+                item {
+                    SuperpowerTogglesCard(
+                        smartIndent = smartIndent,
+                        onSmartIndentChange = { viewModel.setSmartIndent(it) },
+                        oopsMode = oopsMode,
+                        onOopsModeChange = { viewModel.setOopsMode(it) },
+                        humanJitter = humanJitter,
+                        onHumanJitterChange = { viewModel.setHumanJitter(it) },
+                        fastPaste = fastPaste,
+                        onFastPasteChange = { viewModel.setFastPaste(it) }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(32.dp)) }
+            }
+        } else {
+            // ══════════════════════════════════════════════════════════
+            // TAB 1: OFFLINE SNIPPETS VAULT VIEW
+            // ══════════════════════════════════════════════════════════
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item { Spacer(modifier = Modifier.height(4.dp)) }
+
+                // Search Bar
+                item {
+                    OutlinedTextField(
+                        value = vaultSearchQuery,
+                        onValueChange = { vaultSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = {
+                            Text("Search snippets by title, tag, code...", fontSize = 13.sp, color = Color.Gray)
+                        },
+                        leadingIcon = {
+                            Text("🔍", fontSize = 14.sp)
+                        },
+                        trailingIcon = {
+                            if (vaultSearchQuery.isNotEmpty()) {
+                                IconButton(onClick = { vaultSearchQuery = "" }) {
+                                    Text("✕", fontSize = 14.sp, color = Color.Gray)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = CardBg,
+                            unfocusedContainerColor = CardBg,
+                            focusedBorderColor = ElectricCyan,
+                            unfocusedBorderColor = CardBorder,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // Filter Tags Horizontal Scroll
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        allVaultTags.forEach { tag ->
+                            val isSelected = selectedTagFilter == tag
+                            Surface(
+                                modifier = Modifier.clickable {
+                                    triggerHaptic(20)
+                                    selectedTagFilter = tag
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) ElectricIndigo.copy(alpha = 0.35f) else CardBorder,
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, ElectricIndigo) else null
+                            ) {
                                 Text(
-                                    "~${String.format("%.1f", estimatedSeconds)}s at $wpm WPM",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = EmeraldGreen
+                                    text = tag,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.White else Color.LightGray
                                 )
                             }
                         }
                     }
                 }
-            }
 
-            // 5. Speed (WPM) Controls
-            item {
-                SpeedControlCard(
-                    wpm = wpm,
-                    onWpmChange = {
-                        triggerHaptic(20)
-                        viewModel.setWpm(it)
+                // Snippets Count Header
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "OFFLINE TEMPLATES (${filteredVaultSnippets.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = "Zero Internet Required",
+                            fontSize = 11.sp,
+                            color = EmeraldGreen
+                        )
                     }
-                )
-            }
+                }
 
-            // 6. Focus Delay Controls
-            item {
-                FocusDelayCard(
-                    delaySec = focusDelay,
-                    onDelayChange = {
-                        triggerHaptic(20)
-                        viewModel.setFocusDelay(it)
+                // Empty State if no match
+                if (filteredVaultSnippets.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
+                            colors = CardDefaults.cardColors(containerColor = CardBg),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("🔎", fontSize = 36.sp)
+                                Text(
+                                    "No snippets found",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    "Try clearing the search or filter tag.",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                     }
-                )
-            }
+                } else {
+                    // Snippets Cards
+                    items(filteredVaultSnippets, key = { it.id }) { snippet ->
+                        VaultSnippetCard(
+                            snippet = snippet,
+                            onPunch = {
+                                triggerHaptic(50)
+                                viewModel.punchCustomSnippet(snippet.code)
+                            },
+                            onLoad = {
+                                triggerHaptic(30)
+                                viewModel.setCode(snippet.code)
+                                currentTab = 0
+                            },
+                            onToggleFavorite = {
+                                triggerHaptic(20)
+                                viewModel.toggleVaultFavorite(snippet.id)
+                            },
+                            onDelete = {
+                                triggerHaptic(40)
+                                viewModel.deleteVaultSnippet(snippet.id)
+                            }
+                        )
+                    }
+                }
 
-            // 7. Powerful Superpower Toggles
-            item {
-                SuperpowerTogglesCard(
-                    smartIndent = smartIndent,
-                    onSmartIndentChange = { viewModel.setSmartIndent(it) },
-                    oopsMode = oopsMode,
-                    onOopsModeChange = { viewModel.setOopsMode(it) },
-                    humanJitter = humanJitter,
-                    onHumanJitterChange = { viewModel.setHumanJitter(it) },
-                    fastPaste = fastPaste,
-                    onFastPasteChange = { viewModel.setFastPaste(it) }
-                )
+                item { Spacer(modifier = Modifier.height(32.dp)) }
             }
-
-            item { Spacer(modifier = Modifier.height(32.dp)) }
         }
     }
 
@@ -427,20 +709,15 @@ fun MainScreen(
         )
     }
 
-    // ─── Snippets & History Dialog ────────────────────────────
-    if (showSnippetsDialog) {
-        SnippetsAndHistoryDialog(
-            predefinedSnippets = viewModel.predefinedSnippets,
-            history = history,
-            onSelectSnippet = { selected ->
-                triggerHaptic(30)
-                viewModel.setCode(selected)
-                showSnippetsDialog = false
+    // ─── Add Custom Snippet Dialog ────────────────────────────
+    if (showAddSnippetDialog) {
+        AddSnippetDialog(
+            onSave = { title, language, tags, codeText ->
+                triggerHaptic(40)
+                viewModel.addVaultSnippet(title, language, tags, codeText)
+                showAddSnippetDialog = false
             },
-            onClearHistory = {
-                viewModel.clearHistory()
-            },
-            onDismiss = { showSnippetsDialog = false }
+            onDismiss = { showAddSnippetDialog = false }
         )
     }
 
@@ -458,6 +735,326 @@ fun MainScreen(
             },
             onDismiss = { showManualIpDialog = false }
         )
+    }
+}
+
+// ─── Vault Snippet Card Component ─────────────────────────────
+
+@Composable
+fun VaultSnippetCard(
+    snippet: VaultSnippet,
+    onPunch: () -> Unit,
+    onLoad: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header: Language chip, Title, Favorite & Delete
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = when (snippet.language.lowercase()) {
+                            "c++", "cpp" -> ElectricCyan.copy(alpha = 0.2f)
+                            "python", "py" -> EmeraldGreen.copy(alpha = 0.2f)
+                            "sql" -> AmberOrange.copy(alpha = 0.2f)
+                            "docker" -> ElectricIndigo.copy(alpha = 0.2f)
+                            "bash", "shell" -> ElectricPurple.copy(alpha = 0.2f)
+                            else -> Color.White.copy(alpha = 0.1f)
+                        }
+                    ) {
+                        Text(
+                            text = snippet.language,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = when (snippet.language.lowercase()) {
+                                "c++", "cpp" -> ElectricCyan
+                                "python", "py" -> EmeraldGreen
+                                "sql" -> AmberOrange
+                                "docker" -> ElectricIndigo
+                                "bash", "shell" -> ElectricPurple
+                                else -> Color.LightGray
+                            }
+                        )
+                    }
+                    Text(
+                        text = snippet.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Text(if (snippet.isFavorite) "⭐" else "☆", fontSize = 16.sp)
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Text("🗑️", fontSize = 13.sp)
+                    }
+                }
+            }
+
+            // Tags row
+            if (snippet.tags.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    snippet.tags.forEach { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color.White.copy(alpha = 0.06f)
+                        ) {
+                            Text(
+                                text = tag,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 10.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Code Preview Box
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DarkBg)
+                    .padding(10.dp)
+            ) {
+                Text(
+                    text = snippet.code.trim(),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = Color(0xFF94A3B8),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onPunch,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .background(
+                            brush = Brush.horizontalGradient(listOf(ElectricIndigo, ElectricPurple)),
+                            shape = RoundedCornerShape(10.dp)
+                        ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("⚡", fontSize = 13.sp)
+                        Text("PUNCH", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onLoad,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("✏️", fontSize = 12.sp)
+                        Text("Load in Editor", fontSize = 12.sp, color = Color.LightGray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Add Custom Snippet Dialog ────────────────────────────────
+
+@Composable
+fun AddSnippetDialog(
+    onSave: (title: String, language: String, tags: List<String>, code: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var language by remember { mutableStateOf("C++") }
+    var tagsInput by remember { mutableStateOf("") }
+    var codeText by remember { mutableStateOf("") }
+
+    val quickLangs = listOf("C++", "Python", "Java", "SQL", "Bash", "Other")
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, CardBorder, RoundedCornerShape(18.dp)),
+            colors = CardDefaults.cardColors(containerColor = DarkBg),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Add Snippet to Vault",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Text("✕", color = Color.Gray, fontSize = 14.sp)
+                    }
+                }
+
+                // Title Input
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Snippet Title", fontSize = 12.sp) },
+                    placeholder = { Text("e.g. Dijkstra Shortest Path", color = Color.Gray, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CardBg,
+                        unfocusedContainerColor = CardBg,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Quick Language Selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    quickLangs.forEach { lang ->
+                        Surface(
+                            modifier = Modifier.clickable { language = lang },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (language == lang) ElectricCyan.copy(alpha = 0.3f) else CardBorder
+                        ) {
+                            Text(
+                                text = lang,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 11.sp,
+                                fontWeight = if (language == lang) FontWeight.Bold else FontWeight.Normal,
+                                color = if (language == lang) ElectricCyan else Color.LightGray
+                            )
+                        }
+                    }
+                }
+
+                // Tags Input
+                OutlinedTextField(
+                    value = tagsInput,
+                    onValueChange = { tagsInput = it },
+                    label = { Text("Tags (comma separated)", fontSize = 12.sp) },
+                    placeholder = { Text("cp, graphs, interview", color = Color.Gray, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CardBg,
+                        unfocusedContainerColor = CardBg,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Code Input
+                OutlinedTextField(
+                    value = codeText,
+                    onValueChange = { codeText = it },
+                    label = { Text("Code", fontSize = 12.sp) },
+                    placeholder = { Text("Paste snippet code here...", color = Color.Gray, fontSize = 12.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = Color.White
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = CardBg,
+                        unfocusedContainerColor = CardBg,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+
+                // Dialog Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val parsedTags = tagsInput.split(",")
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                            onSave(title, language, parsedTags, codeText)
+                        },
+                        enabled = title.isNotBlank() && codeText.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan)
+                    ) {
+                        Text("Save Snippet", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1034,153 +1631,10 @@ fun CountdownOverlay(
                 OutlinedButton(
                     onClick = onCancel,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonRed),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = Brush.horizontalGradient(listOf(CrimsonRed, CrimsonRed))),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.padding(top = 16.dp)
                 ) {
                     Text("ABORT PUNCH", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SnippetsAndHistoryDialog(
-    predefinedSnippets: List<CodeSnippet>,
-    history: List<String>,
-    onSelectSnippet: (String) -> Unit,
-    onClearHistory: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    var selectedTab by remember { mutableStateOf(0) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .border(1.dp, CardBorder, RoundedCornerShape(18.dp)),
-            colors = CardDefaults.cardColors(containerColor = DarkBg),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Code Vault & History",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = Color.White
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Text("✕", color = Color.Gray, fontSize = 16.sp)
-                    }
-                }
-
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = DarkBg,
-                    contentColor = ElectricCyan
-                ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("Templates (${predefinedSnippets.size})") }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Recent History (${history.size})") }
-                    )
-                }
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (selectedTab == 0) {
-                        items(predefinedSnippets) { snippet ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelectSnippet(snippet.code) },
-                                colors = CardDefaults.cardColors(containerColor = CardBg),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(snippet.title, fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text(snippet.language, fontSize = 11.sp, color = ElectricCyan)
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        snippet.code.take(90).replace('\n', ' ') + "...",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        color = Color.Gray,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        if (history.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("No recent history yet", color = Color.Gray)
-                                }
-                            }
-                        } else {
-                            items(history) { itemCode ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onSelectSnippet(itemCode) },
-                                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            itemCode.take(120).replace('\n', ' ') + "...",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 12.sp,
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("${itemCode.length} chars", fontSize = 11.sp, color = Color.Gray)
-                                    }
-                                }
-                            }
-                            item {
-                                TextButton(
-                                    onClick = onClearHistory,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Clear All History", color = CrimsonRed, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
