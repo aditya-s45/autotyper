@@ -21,6 +21,12 @@
         const currentHost = (location.host && location.host !== '') ? location.host : defaultHost;
         const hostOnly = location.hostname || 'localhost';
 
+        if (location.protocol === 'https:') {
+            return [
+                `${wsProtocol}//${currentHost}/ws`,
+            ];
+        }
+
         return [
             `${wsProtocol}//${currentHost}/ws`,
             `${wsProtocol}//${hostOnly}:8080/ws`,

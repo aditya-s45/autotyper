@@ -10,17 +10,17 @@
     <link rel="stylesheet" href="style.css">
     <style>
         .pair-container {
-            max-width: 520px;
-            margin: 40px auto;
-            padding: 24px;
+            max-width: 540px;
+            margin: 30px auto;
+            padding: 20px;
             text-align: center;
         }
         .pair-card {
-            background: rgba(22, 22, 38, 0.85);
+            background: rgba(22, 22, 38, 0.88);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px);
             border-radius: 24px;
-            padding: 32px 24px;
+            padding: 28px 24px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
             transition: border-color 0.4s ease, box-shadow 0.4s ease;
         }
@@ -28,18 +28,100 @@
             border-color: #00ff88;
             box-shadow: 0 0 40px rgba(0, 255, 136, 0.25);
         }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            margin-bottom: 18px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ffaa00;
+            animation: pulse 1.5s infinite;
+        }
+        .status-dot.active {
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+            animation: none;
+        }
+        .tab-bar {
+            display: flex;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 4px;
+            margin-bottom: 20px;
+            gap: 4px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: none;
+            background: transparent;
+            color: #888;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .tab-btn.active {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        }
+        .tab-btn:hover:not(.active) {
+            color: #bbb;
+            background: rgba(255, 255, 255, 0.04);
+        }
         .qr-wrapper {
             background: #ffffff;
             border-radius: 18px;
             padding: 16px;
             display: inline-block;
-            margin: 20px 0;
+            margin: 14px 0;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            position: relative;
+            min-height: 272px;
+            min-width: 272px;
         }
         .qr-wrapper img {
             width: 240px;
             height: 240px;
             display: block;
+        }
+        .qr-loading {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(18, 18, 30, 0.95);
+            border-radius: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #79ffe1;
+            font-size: 0.9rem;
+            padding: 20px;
+        }
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(121, 255, 225, 0.2);
+            border-top-color: #79ffe1;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin-bottom: 12px;
         }
         .url-box {
             display: flex;
@@ -48,9 +130,9 @@
             border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 12px;
             padding: 6px 8px 6px 14px;
-            margin: 16px 0;
+            margin: 14px 0;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
         }
         .url-box span {
             flex: 1;
@@ -58,6 +140,7 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             color: #79ffe1;
+            text-align: left;
         }
         .url-box button {
             background: rgba(255, 255, 255, 0.1);
@@ -72,49 +155,41 @@
         .url-box button:hover {
             background: rgba(255, 255, 255, 0.2);
         }
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            background: rgba(255, 255, 255, 0.05);
-            margin-bottom: 20px;
-        }
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ffaa00;
-            animation: pulse 1.5s infinite;
-        }
-        .status-dot.active {
-            background: #00ff88;
-            box-shadow: 0 0 10px #00ff88;
-            animation: none;
-        }
         .guide-grid {
-            margin-top: 24px;
+            margin-top: 20px;
             display: grid;
-            gap: 12px;
+            gap: 10px;
             text-align: left;
         }
         .guide-item {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 12px;
-            padding: 12px 16px;
+            padding: 10px 14px;
             font-size: 0.85rem;
             color: #aaa;
+            line-height: 1.4;
         }
         .guide-item b {
             color: #eee;
         }
+        .badge-secure {
+            display: inline-block;
+            background: rgba(0, 255, 136, 0.15);
+            color: #00ff88;
+            font-size: 0.72rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 0.4; }
             50% { opacity: 1; }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -128,13 +203,27 @@
                 <span id="statusText">Waiting for phone to connect...</span>
             </div>
 
-            <h2 style="font-size: 1.6rem; font-weight: 700; margin-bottom: 8px;">📱 Scan to Pair Phone</h2>
-            <p style="font-size: 0.9rem; color: #888; margin-bottom: 8px;">
-                Zero cables. Zero ADB setup. Connect over your Wi-Fi network!
-            </p>
+            <!-- Tab Switcher -->
+            <div class="tab-bar">
+                <button class="tab-btn active" id="tabWifiBtn" onclick="selectTab('wifi')">
+                    📶 Same Wi-Fi
+                </button>
+                <button class="tab-btn" id="tabCellularBtn" onclick="selectTab('cellular')">
+                    🌐 Anywhere / 4G / 5G <span class="badge-secure">New</span>
+                </button>
+            </div>
+
+            <div id="tabDescription" style="font-size: 0.88rem; color: #888; margin-bottom: 10px; min-height: 22px;">
+                Instant ~20ms connection. Phone & laptop must be on the same Wi-Fi.
+            </div>
 
             <div class="qr-wrapper">
                 <img id="qrImg" src="/api/qr" alt="Scan QR Code with Phone">
+                <div class="qr-loading" id="qrLoading" style="display: none;">
+                    <div class="spinner"></div>
+                    <b>Starting Cloudflare Tunnel...</b>
+                    <span style="font-size: 0.8rem; color: #888; margin-top: 6px;">Zero setup. Ready in 2-3 seconds.</span>
+                </div>
             </div>
 
             <div class="url-box">
@@ -142,32 +231,97 @@
                 <button id="copyBtn" onclick="copyPairingURL()">Copy</button>
             </div>
 
-            <div class="guide-grid">
+            <!-- Dynamic Guide Info based on Tab -->
+            <div class="guide-grid" id="wifiGuide">
                 <div class="guide-item">
-                    📶 <b>Method 1 (Same Wi-Fi):</b> Ensure laptop and phone are connected to the same home or office Wi-Fi, then scan with your phone's camera.
+                    📶 <b>Same Wi-Fi:</b> Ensure laptop and phone are connected to the same home or office Wi-Fi, then scan with your camera.
                 </div>
                 <div class="guide-item">
-                    🔥 <b>Method 2 (No Wi-Fi / Hotspot):</b> Turn on your phone's <b>Personal Hotspot</b>, connect your laptop to it, and scan!
+                    🔥 <b>Phone Hotspot:</b> No Wi-Fi? Turn on your phone's <b>Personal Hotspot</b>, connect laptop to it, and scan!
+                </div>
+            </div>
+
+            <div class="guide-grid" id="cellularGuide" style="display: none;">
+                <div class="guide-item">
+                    📱 <b>4G / 5G Cellular:</b> Phone can be on mobile data anywhere in the world — no same Wi-Fi or router config needed!
                 </div>
                 <div class="guide-item">
-                    🔌 <b>Method 3 (USB Cable fallback):</b> If wireless isn't available, standard USB with ADB still works at <code>http://localhost:8080</code>.
+                    🔒 <b>Encrypted Tunnel:</b> End-to-end encrypted outbound connection via Cloudflare Edge network directly to your laptop.
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        let currentUrl = '';
+        let currentTab = 'wifi';
+        let localUrl = '';
+        let tunnelUrl = '';
+        let hasTunnel = false;
 
-        // Fetch network info and update pairing details
+        function selectTab(tab) {
+            currentTab = tab;
+            const wifiBtn = document.getElementById('tabWifiBtn');
+            const cellularBtn = document.getElementById('tabCellularBtn');
+            const wifiGuide = document.getElementById('wifiGuide');
+            const cellularGuide = document.getElementById('cellularGuide');
+            const desc = document.getElementById('tabDescription');
+            const qrLoading = document.getElementById('qrLoading');
+            const qrImg = document.getElementById('qrImg');
+            const urlText = document.getElementById('pairingUrlText');
+
+            if (tab === 'wifi') {
+                wifiBtn.classList.add('active');
+                cellularBtn.classList.remove('active');
+                wifiGuide.style.display = 'grid';
+                cellularGuide.style.display = 'none';
+                desc.textContent = 'Instant ~20ms connection. Phone & laptop must be on same Wi-Fi or Hotspot.';
+                qrLoading.style.display = 'none';
+                qrImg.style.visibility = 'visible';
+
+                const target = localUrl || (location.origin);
+                urlText.textContent = target;
+                qrImg.src = '/api/qr?url=' + encodeURIComponent(target);
+            } else {
+                cellularBtn.classList.add('active');
+                wifiBtn.classList.remove('active');
+                wifiGuide.style.display = 'none';
+                cellularGuide.style.display = 'grid';
+                desc.textContent = 'Works anywhere on 4G/5G mobile data or different Wi-Fi. Zero router config!';
+
+                if (tunnelUrl) {
+                    qrLoading.style.display = 'none';
+                    qrImg.style.visibility = 'visible';
+                    urlText.textContent = tunnelUrl;
+                    qrImg.src = '/api/qr?url=' + encodeURIComponent(tunnelUrl);
+                } else {
+                    qrLoading.style.display = 'flex';
+                    qrImg.style.visibility = 'hidden';
+                    urlText.textContent = 'Setting up tunnel...';
+                }
+            }
+        }
+
         async function loadNetworkInfo() {
             try {
                 const res = await fetch('/api/info');
                 const data = await res.json();
                 if (data.pairing_url) {
-                    currentUrl = data.pairing_url;
-                    document.getElementById('pairingUrlText').textContent = currentUrl;
-                    document.getElementById('qrImg').src = '/api/qr?url=' + encodeURIComponent(currentUrl);
+                    localUrl = data.pairing_url;
+                }
+                if (data.tunnel_url) {
+                    tunnelUrl = data.tunnel_url;
+                    hasTunnel = true;
+                }
+
+                // If currently on cellular tab and tunnel just appeared, update view
+                if (currentTab === 'cellular' && tunnelUrl) {
+                    document.getElementById('qrLoading').style.display = 'none';
+                    document.getElementById('qrImg').style.visibility = 'visible';
+                    document.getElementById('pairingUrlText').textContent = tunnelUrl;
+                    document.getElementById('qrImg').src = '/api/qr?url=' + encodeURIComponent(tunnelUrl);
+                } else if (currentTab === 'wifi' && localUrl) {
+                    document.getElementById('pairingUrlText').textContent = localUrl;
+                    document.getElementById('qrImg').src = '/api/qr?url=' + encodeURIComponent(localUrl);
                 }
             } catch (e) {
                 console.error(e);
@@ -175,8 +329,9 @@
         }
 
         function copyPairingURL() {
-            if (!currentUrl) return;
-            navigator.clipboard.writeText(currentUrl).then(() => {
+            const text = document.getElementById('pairingUrlText').textContent;
+            if (!text || text.includes('...')) return;
+            navigator.clipboard.writeText(text).then(() => {
                 const btn = document.getElementById('copyBtn');
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = 'Copy', 1500);
@@ -208,6 +363,15 @@
                 setTimeout(monitorConnection, 3000);
             };
         }
+
+        // Poll /api/info every 1.5s until tunnel is ready
+        const tunnelPoller = setInterval(() => {
+            if (hasTunnel && localUrl) {
+                clearInterval(tunnelPoller);
+                return;
+            }
+            loadNetworkInfo();
+        }, 1500);
 
         loadNetworkInfo();
         monitorConnection();

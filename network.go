@@ -100,6 +100,8 @@ func handleAPIInfo(w http.ResponseWriter, r *http.Request) {
 		"legacy_ws_port": WS_PORT,
 		"pairing_url":    pairingURL,
 		"primary_ip":     ips[0],
+		"tunnel_url":     getTunnelURL(),
+		"has_tunnel":     isTunnelActive(),
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }

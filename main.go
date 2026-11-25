@@ -854,9 +854,24 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	logMsg("📱", fmt.Sprintf("Device disconnected (%s). Remaining: %d", clientIP, remaining), ColorDim)
 }
 
+// cleanupStaleInstances frees port 8080 by terminating old/orphaned companion processes
+func cleanupStaleInstances() {
+	currPID := os.Getpid()
+	killOtherCmd := exec.Command("taskkill", "/F", "/FI", "IMAGENAME eq autotyper.exe", "/FI", fmt.Sprintf("PID ne %d", currPID))
+	killOtherCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	_ = killOtherCmd.Run()
+
+	killServerCmd := exec.Command("taskkill", "/F", "/IM", "server.exe")
+	killServerCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	_ = killServerCmd.Run()
+
+	time.Sleep(150 * time.Millisecond)
+}
+
 // ─── Main Entry Point ────────────────────────────────────────
 
 func main() {
+	cleanupStaleInstances()
 	initConsole()
 	logHeader("⌨️  Keyboard Punch — Companion (Go Native)")
 
@@ -911,6 +926,9 @@ func main() {
 		_ = http.ListenAndServe(addr, wsMux)
 	}()
 
+	// 4. Start Cloudflare Quick Tunnel for 4G/5G remote & cellular pairing
+	go startCloudflareTunnel(HTTP_PORT)
+
 	logHeader("🚀 Ready!")
 	pairingURL := getPrimaryPairingURL()
 	if isConsoleAttached {
@@ -937,6 +955,7 @@ func main() {
 		fmt.Println()
 		logMsg("👋", "Shutting down...", ColorDim)
 	}
+	stopCloudflareTunnel()
 	cleanupADBReverse()
 	if isConsoleAttached {
 		logMsg("✅", "Goodbye!", ColorGreen)
