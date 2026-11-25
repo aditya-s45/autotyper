@@ -58,6 +58,8 @@ var (
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procAttachConsole    = kernel32.NewProc("AttachConsole")
 	procAllocConsole     = kernel32.NewProc("AllocConsole")
+	procCreateMutexW     = kernel32.NewProc("CreateMutexW")
+	procCloseHandle      = kernel32.NewProc("CloseHandle")
 
 	user32             = syscall.NewLazyDLL("user32.dll")
 	sendInput          = user32.NewProc("SendInput")
@@ -67,7 +69,29 @@ var (
 	shell32 = syscall.NewLazyDLL("shell32.dll")
 
 	isConsoleAttached = false
+	instanceMutex     uintptr
 )
+
+// silentCmd creates an exec.Cmd with CREATE_NO_WINDOW so zero black console windows ever flash
+func silentCmd(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
+	return cmd
+}
+
+// acquireSingleInstance ensures only one instance of AutoTyper runs at a time
+func acquireSingleInstance() bool {
+	mutexName, _ := syscall.UTF16PtrFromString("Local\\AutoTyper_Instance_8080")
+	handle, _, err := procCreateMutexW.Call(0, 1, uintptr(unsafe.Pointer(mutexName)))
+	if err.(syscall.Errno) == 183 { // ERROR_ALREADY_EXISTS = 183
+		return false
+	}
+	instanceMutex = handle
+	return true
+}
 
 func initConsole() {
 	for _, arg := range os.Args[1:] {
@@ -279,12 +303,12 @@ func logHeader(title string) {
 // ─── ADB Management ──────────────────────────────────────────
 
 func checkADB() (bool, string) {
-	cmd := exec.Command("adb", "version")
+	cmd := silentCmd("adb", "version")
 	if err := cmd.Run(); err != nil {
 		return false, "ADB not found on PATH.\n  Install via: winget install Google.PlatformTools (Windows)\n  Or: brew install android-platform-tools (macOS)"
 	}
 
-	out, err := exec.Command("adb", "devices").Output()
+	out, err := silentCmd("adb", "devices").Output()
 	if err != nil {
 		return false, "Failed to run 'adb devices'"
 	}
@@ -307,7 +331,7 @@ func setupADBReverse() bool {
 	logMsg("🔌", "Setting up ADB reverse port forwarding...", ColorCyan)
 
 	// Primary port 8080 carries both HTTP and WebSockets (/ws)
-	cmd := exec.Command("adb", "reverse", fmt.Sprintf("tcp:%d", HTTP_PORT), fmt.Sprintf("tcp:%d", HTTP_PORT))
+	cmd := silentCmd("adb", "reverse", fmt.Sprintf("tcp:%d", HTTP_PORT), fmt.Sprintf("tcp:%d", HTTP_PORT))
 	if err := cmd.Run(); err != nil {
 		logMsg("✕", fmt.Sprintf("HTTP/WS port %d reverse forward failed", HTTP_PORT), ColorRed)
 		return false
@@ -315,31 +339,12 @@ func setupADBReverse() bool {
 	logMsg("✓", fmt.Sprintf("HTTP/WS port %d forwarded", HTTP_PORT), ColorGreen)
 
 	// Best-effort reverse forward for legacy port 8765
-	_ = exec.Command("adb", "reverse", fmt.Sprintf("tcp:%d", WS_PORT), fmt.Sprintf("tcp:%d", WS_PORT)).Run()
+	_ = silentCmd("adb", "reverse", fmt.Sprintf("tcp:%d", WS_PORT), fmt.Sprintf("tcp:%d", WS_PORT)).Run()
 	return true
 }
 
 func cleanupADBReverse() {
-	_ = exec.Command("adb", "reverse", "--remove-all").Run()
-}
-
-// monitorADBLoop periodically checks for hot-plugged Android devices and automatically configures ADB reverse
-func monitorADBLoop(initialReversed bool) {
-	adbReversed := initialReversed
-	for {
-		time.Sleep(3 * time.Second)
-		ok, info := checkADB()
-		if ok && !adbReversed {
-			logMsg("📱", fmt.Sprintf("Android device detected via USB: %s", info), ColorGreen)
-			if setupADBReverse() {
-				adbReversed = true
-				logMsg("✨", fmt.Sprintf("ADB reverse active! You can now open http://localhost:%d on your phone", HTTP_PORT), ColorGreen)
-			}
-		} else if !ok && adbReversed {
-			adbReversed = false
-			logMsg("⚠️ ", "Android device disconnected from ADB.", ColorYellow)
-		}
-	}
+	_ = silentCmd("adb", "reverse", "--remove-all").Run()
 }
 
 // ─── Shared State & Concurrency ──────────────────────────────
@@ -854,46 +859,45 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 	logMsg("📱", fmt.Sprintf("Device disconnected (%s). Remaining: %d", clientIP, remaining), ColorDim)
 }
 
-// cleanupStaleInstances frees port 8080 by terminating old/orphaned companion processes
+// cleanupStaleInstances frees resources by terminating orphaned tunnel/companion processes
 func cleanupStaleInstances() {
-	currPID := os.Getpid()
-	killOtherCmd := exec.Command("taskkill", "/F", "/FI", "IMAGENAME eq autotyper.exe", "/FI", fmt.Sprintf("PID ne %d", currPID))
-	killOtherCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	_ = killOtherCmd.Run()
-
-	killServerCmd := exec.Command("taskkill", "/F", "/IM", "server.exe")
-	killServerCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	_ = killServerCmd.Run()
-
-	time.Sleep(150 * time.Millisecond)
+	_ = silentCmd("taskkill", "/F", "/IM", "cloudflared.exe").Run()
+	_ = silentCmd("taskkill", "/F", "/IM", "server.exe").Run()
+	time.Sleep(100 * time.Millisecond)
 }
 
 // ─── Main Entry Point ────────────────────────────────────────
 
 func main() {
+	if !acquireSingleInstance() {
+		// Another instance of AutoTyper is already running!
+		// Open pairing dashboard in browser and exit cleanly.
+		_ = silentCmd("rundll32", "url.dll,FileProtocolHandler", fmt.Sprintf("http://localhost:%d/pair.html", HTTP_PORT)).Start()
+		return
+	}
+	defer func() {
+		if instanceMutex != 0 {
+			procCloseHandle.Call(instanceMutex)
+		}
+	}()
+
 	cleanupStaleInstances()
 	initConsole()
 	logHeader("⌨️  Keyboard Punch — Companion (Go Native)")
 
-	// 1. Check ADB
+	// 1. Check ADB once on startup (completely silent, no flashing windows)
 	logMsg("🔍", "Checking ADB connection...", ColorCyan)
 	ok, adbInfo := checkADB()
-	adbReversed := false
 	if !ok {
 		logMsg("⚠️ ", adbInfo, ColorYellow)
-		logMsg("💡", "No USB phone detected yet. Connect phone with USB Debugging for ADB reverse.", ColorDim)
+		logMsg("💡", "No USB phone detected yet. Connect phone with USB Debugging for ADB reverse (optional).", ColorDim)
 		logMsg("🌐", "Starting web & WebSocket servers for browser & local network access...", ColorCyan)
 	} else {
 		logMsg("✅", fmt.Sprintf("Device connected: %s", adbInfo), ColorGreen)
-		if setupADBReverse() {
-			adbReversed = true
-		} else {
+		if !setupADBReverse() {
 			logMsg("⚠️ ", "ADB reverse setup failed. Try: adb reverse --remove-all", ColorYellow)
 		}
 	}
-
-	// Start background ADB hotplug watcher loop
-	go monitorADBLoop(adbReversed)
 
 	// 2. Start HTTP Server serving embedded app/
 	appFS, err := fs.Sub(embeddedApp, "app")

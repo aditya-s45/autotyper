@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"sync"
 	"syscall"
@@ -118,7 +117,7 @@ var (
 
 // openBrowser opens the mobile/web interface in the user's default browser
 func openBrowser(url string) {
-	_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	_ = silentCmd("rundll32", "url.dll,FileProtocolHandler", url).Start()
 }
 
 // showContextMenu displays the right-click tray menu

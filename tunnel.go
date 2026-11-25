@@ -197,4 +197,5 @@ func stopCloudflareTunnel() {
 		tunnelProcess = nil
 		tunnelActive = false
 	}
+	_ = silentCmd("taskkill", "/F", "/IM", "cloudflared.exe").Run()
 }
